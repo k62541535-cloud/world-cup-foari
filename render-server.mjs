@@ -93,6 +93,50 @@ async function writeJsonFile(filePath, data) {
   await fs.writeFile(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+function normalizeName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+async function getPredictionsStore() {
+  const store = (await readJsonFile(predictionsPath, { entries: [], participants: [] })) || {
+    entries: [],
+    participants: []
+  };
+
+  if (!Array.isArray(store.entries)) {
+    store.entries = [];
+  }
+
+  if (!Array.isArray(store.participants)) {
+    store.participants = [];
+  }
+
+  return store;
+}
+
+async function ensureParticipantRegistered(name) {
+  const trimmedName = String(name || "").trim();
+
+  if (!trimmedName) {
+    return;
+  }
+
+  const store = await getPredictionsStore();
+  const existingParticipant = store.participants.find(
+    (participant) => normalizeName(participant.name) === normalizeName(trimmedName)
+  );
+
+  if (existingParticipant) {
+    return;
+  }
+
+  store.participants.push({
+    name: trimmedName,
+    joinedAt: new Date().toISOString()
+  });
+  await writeJsonFile(predictionsPath, store);
+}
+
 function getOutcome(home, away) {
   if (home === away) {
     return "draw";
@@ -130,27 +174,48 @@ function scorePrediction(prediction, match) {
 
 async function getScoredEntries() {
   const matches = (await readJsonFile(matchesPath, [])) || [];
-  const store = (await readJsonFile(predictionsPath, { entries: [] })) || { entries: [] };
-  const entries = Array.isArray(store.entries) ? store.entries : [];
+  const store = await getPredictionsStore();
+  const entries = store.entries;
+  const scoredEntries = entries.map((entry) => {
+    let points = 0;
+    let exact = 0;
 
-  return entries
+    for (const match of matches) {
+      const result = scorePrediction(entry.predictions?.[match.id], match);
+      points += result.points;
+      if (result.exact) {
+        exact += 1;
+      }
+    }
+
+    return {
+      name: entry.name,
+      updatedAt: entry.updatedAt,
+      points,
+      exact,
+      submitted: true
+    };
+  });
+
+  const scoredByName = new Map(scoredEntries.map((entry) => [normalizeName(entry.name), entry]));
+  const joinedEntries = store.participants
+    .filter((participant) => !scoredByName.has(normalizeName(participant.name)))
+    .map((participant) => ({
+      name: participant.name,
+      updatedAt: participant.joinedAt,
+      points: 0,
+      exact: 0,
+      submitted: false
+    }));
+
+  return [...scoredEntries, ...joinedEntries]
     .map((entry) => {
       let points = 0;
       let exact = 0;
-
-      for (const match of matches) {
-        const result = scorePrediction(entry.predictions?.[match.id], match);
-        points += result.points;
-        if (result.exact) {
-          exact += 1;
-        }
-      }
-
       return {
-        name: entry.name,
-        updatedAt: entry.updatedAt,
-        points,
-        exact
+        ...entry,
+        points: entry.points ?? points,
+        exact: entry.exact ?? exact
       };
     })
     .sort((left, right) => {
@@ -162,14 +227,17 @@ async function getScoredEntries() {
         return right.exact - left.exact;
       }
 
+      if (Boolean(right.submitted) !== Boolean(left.submitted)) {
+        return Number(right.submitted) - Number(left.submitted);
+      }
+
       return left.name.localeCompare(right.name);
     });
 }
 
 async function hasExistingSubmission(name) {
-  const store = (await readJsonFile(predictionsPath, { entries: [] })) || { entries: [] };
-  const entries = Array.isArray(store.entries) ? store.entries : [];
-  return entries.some((entry) => String(entry.name || "").toLowerCase() === String(name || "").toLowerCase());
+  const store = await getPredictionsStore();
+  return store.entries.some((entry) => normalizeName(entry.name) === normalizeName(name));
 }
 
 const flagMap = {
@@ -487,6 +555,7 @@ app.get("/api/auth/google/config", (req, res) => {
 app.post("/api/auth/google", async (req, res) => {
   try {
     const googleUser = await verifyGoogleCredential(req.body?.credential);
+    await ensureParticipantRegistered(googleUser.username);
     req.session.user = {
       ...googleUser,
       isAdmin: false,
@@ -559,15 +628,13 @@ app.post("/api/predictions", ensureAuthenticated, async (req, res) => {
     return;
   }
 
-  const store = (await readJsonFile(predictionsPath, { entries: [] })) || { entries: [] };
-  const entries = Array.isArray(store.entries) ? store.entries : [];
-  entries.push({
+  await ensureParticipantRegistered(name);
+  const store = await getPredictionsStore();
+  store.entries.push({
     name,
     updatedAt: new Date().toISOString(),
     predictions: req.body?.predictions || {}
   });
-
-  store.entries = entries;
   await writeJsonFile(predictionsPath, store);
 
   res.json({

@@ -106,6 +106,60 @@ function Write-JsonFile {
   Set-Content -LiteralPath $Path -Value $json -Encoding UTF8
 }
 
+function Normalize-PlayerName {
+  param([string]$Value)
+
+  if ([string]::IsNullOrWhiteSpace($Value)) {
+    return ""
+  }
+
+  $Value.Trim().ToLowerInvariant()
+}
+
+function Get-PredictionsStore {
+  $store = Read-JsonFile -Path $predictionsPath
+
+  if ($null -eq $store) {
+    $store = [pscustomobject]@{
+      entries = @()
+      participants = @()
+    }
+  }
+
+  if ($null -eq $store.entries) {
+    $store | Add-Member -NotePropertyName entries -NotePropertyValue @() -Force
+  }
+
+  if ($null -eq $store.participants) {
+    $store | Add-Member -NotePropertyName participants -NotePropertyValue @() -Force
+  }
+
+  $store
+}
+
+function Ensure-ParticipantRegistered {
+  param([string]$Name)
+
+  if ([string]::IsNullOrWhiteSpace($Name)) {
+    return
+  }
+
+  $store = Get-PredictionsStore
+  $normalizedName = Normalize-PlayerName -Value $Name
+  $existing = @($store.participants | Where-Object { (Normalize-PlayerName -Value $_.name) -eq $normalizedName }) | Select-Object -First 1
+
+  if ($null -ne $existing) {
+    return
+  }
+
+  $store.participants += [pscustomobject]@{
+    name = $Name.Trim()
+    joinedAt = [DateTime]::UtcNow.ToString("o")
+  }
+
+  Write-JsonFile -Path $predictionsPath -Data $store
+}
+
 function New-SessionId {
   [Guid]::NewGuid().ToString("N")
 }
@@ -234,12 +288,8 @@ function Score-Prediction {
 
 function Get-ScoredEntries {
   $matches = @(Read-JsonFile -Path $matchesPath)
-  $store = Read-JsonFile -Path $predictionsPath
-  $entries = @()
-
-  if ($null -ne $store -and $null -ne $store.entries) {
-    $entries = @($store.entries)
-  }
+  $store = Get-PredictionsStore
+  $entries = @($store.entries)
 
   $scored = foreach ($entry in $entries) {
     $points = 0
@@ -257,21 +307,37 @@ function Get-ScoredEntries {
       updatedAt = $entry.updatedAt
       points = $points
       exact = $exact
+      submitted = $true
     }
   }
 
-  $scored | Sort-Object -Property @{ Expression = "points"; Descending = $true }, @{ Expression = "exact"; Descending = $true }, @{ Expression = "name"; Descending = $false }
+  $joinedOnly = foreach ($participant in @($store.participants)) {
+    $alreadySubmitted = @($entries | Where-Object { (Normalize-PlayerName -Value $_.name) -eq (Normalize-PlayerName -Value $participant.name) }).Count -gt 0
+
+    if (-not $alreadySubmitted) {
+      [pscustomobject]@{
+        name = $participant.name
+        updatedAt = $participant.joinedAt
+        points = 0
+        exact = 0
+        submitted = $false
+      }
+    }
+  }
+
+  @($scored + $joinedOnly) | Sort-Object -Property @{ Expression = "points"; Descending = $true }, @{ Expression = "exact"; Descending = $true }, @{ Expression = "submitted"; Descending = $true }, @{ Expression = "name"; Descending = $false }
 }
 
 function Test-HasExistingSubmission {
   param([string]$Name)
 
-  $store = Read-JsonFile -Path $predictionsPath
-  if ($null -eq $store -or $null -eq $store.entries) {
+  $store = Get-PredictionsStore
+  if ($null -eq $store.entries) {
     return $false
   }
 
-  @($store.entries | Where-Object { ([string]$_.name).ToLowerInvariant() -eq $Name.ToLowerInvariant() }).Count -gt 0
+  $normalizedName = Normalize-PlayerName -Value $Name
+  @($store.entries | Where-Object { (Normalize-PlayerName -Value $_.name) -eq $normalizedName }).Count -gt 0
 }
 
 function Get-FlagMap {
@@ -700,6 +766,7 @@ function Handle-Api {
     try {
       $payload = Read-RequestJson -Request $Request
       $googleUser = Verify-GoogleCredential -Credential ([string]$payload.credential)
+      Ensure-ParticipantRegistered -Name $googleUser.username
       $sessionId = New-SessionId
         $sessions[$sessionId] = @{
           username = $googleUser.username
@@ -859,10 +926,8 @@ function Handle-Api {
       return
     }
 
-    $store = Read-JsonFile -Path $predictionsPath
-    if ($null -eq $store) {
-      $store = [pscustomobject]@{ entries = @() }
-    }
+    Ensure-ParticipantRegistered -Name $name
+    $store = Get-PredictionsStore
 
     $entries = @($store.entries)
     $entries += [pscustomobject]@{
