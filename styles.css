@@ -68,6 +68,23 @@ body::before {
   display: none;
 }
 
+.admin-only {
+  display: none;
+}
+
+.admin-only.admin-visible {
+  display: flex;
+}
+
+.invite-card.admin-only,
+.share-row.admin-only {
+  display: none;
+}
+
+.invite-card.admin-visible {
+  display: grid;
+}
+
 .auth-card {
   width: min(460px, 100%);
   padding: 28px;
@@ -531,6 +548,20 @@ body::before {
   border-radius: 16px;
   color: var(--text);
   background: rgba(255, 255, 255, 0.06);
+}
+
+.admin-code-group {
+  min-width: 280px;
+}
+
+.admin-code-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.admin-code-actions input {
+  flex: 1 1 auto;
 }
 
 .input-group input,

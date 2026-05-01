@@ -10,13 +10,17 @@ const state = {
   matches: [],
   leaderboard: [],
   submitting: false,
-  authConfig: null
+  authConfig: null,
+  isAdmin: false
 };
 
 const elements = {
   authShell: document.getElementById("auth-shell"),
   authMessage: document.getElementById("auth-message"),
   googleSignin: document.getElementById("google-signin"),
+  adminCodeGroup: document.getElementById("admin-code-group"),
+  adminCodeInput: document.getElementById("admin-code-input"),
+  adminCodeButton: document.getElementById("admin-code-button"),
   playerName: document.getElementById("player-name"),
   stageFilter: document.getElementById("stage-filter"),
   matchList: document.getElementById("match-list"),
@@ -29,6 +33,8 @@ const elements = {
   leaderboardNote: document.getElementById("leaderboard-note"),
   saveStatus: document.getElementById("save-status"),
   syncMeta: document.getElementById("sync-meta"),
+  inviteCard: document.getElementById("invite-card"),
+  shareRow: document.getElementById("share-row"),
   shareUrl: document.getElementById("share-url"),
   heroShareUrl: document.getElementById("hero-share-url"),
   copyShareButton: document.getElementById("copy-share-button"),
@@ -77,6 +83,12 @@ function describeNetworkError(error, fallbackMessage) {
 function setAuthVisibility(isAuthenticated) {
   elements.authShell.classList.toggle("auth-hidden", isAuthenticated);
   document.body.classList.toggle("auth-locked", !isAuthenticated);
+}
+
+function renderAdminVisibility() {
+  elements.inviteCard.classList.toggle("admin-visible", state.isAdmin);
+  elements.shareRow.classList.toggle("admin-visible", state.isAdmin);
+  elements.adminCodeGroup.classList.toggle("admin-only", state.isAdmin);
 }
 
 function setStatus(message, tone = "") {
@@ -443,6 +455,36 @@ async function fetchGoogleConfig() {
   return fetchJson("/api/auth/google/config");
 }
 
+async function unlockAdminAccess() {
+  const code = elements.adminCodeInput.value.trim();
+
+  if (!code) {
+    setStatus("Enter the admin code first.", "error");
+    return;
+  }
+
+  elements.adminCodeButton.disabled = true;
+
+  try {
+    const payload = await fetchJson("/api/admin/unlock", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ code })
+    });
+
+    state.isAdmin = Boolean(payload.user?.isAdmin);
+    elements.adminCodeInput.value = "";
+    renderAdminVisibility();
+    setStatus("Admin access unlocked.", "success");
+  } catch (error) {
+    setStatus(describeNetworkError(error, "Admin unlock failed."), "error");
+  } finally {
+    elements.adminCodeButton.disabled = false;
+  }
+}
+
 async function handleGoogleCredential(response) {
   if (!response?.credential) {
     setAuthMessage("Google did not return a sign-in credential.", "error");
@@ -461,9 +503,11 @@ async function handleGoogleCredential(response) {
     });
 
     state.playerName = payload.user.username;
+    state.isAdmin = Boolean(payload.user.isAdmin);
     elements.playerName.value = state.playerName;
     saveLocalDraft();
     setAuthVisibility(true);
+    renderAdminVisibility();
     setAuthMessage("Signed in.", "success");
     await initApp();
   } catch (error) {
@@ -584,9 +628,11 @@ async function logout() {
   }
 
   state.playerName = "";
+  state.isAdmin = false;
   elements.playerName.value = "";
   localStorage.removeItem(storageKeys.name);
   setAuthVisibility(false);
+  renderAdminVisibility();
   initializeGoogleSignIn();
   setAuthMessage("Signed out.");
 }
@@ -608,19 +654,25 @@ async function init() {
     const session = await fetchSession();
 
     if (!session.authenticated) {
+      state.isAdmin = false;
       setAuthVisibility(false);
+      renderAdminVisibility();
       initializeGoogleSignIn();
       return;
     }
 
     state.playerName = session.user.username;
+    state.isAdmin = Boolean(session.user.isAdmin);
     elements.playerName.value = state.playerName;
     setAuthVisibility(true);
+    renderAdminVisibility();
     setStatus("Loading tournament data...");
     await initApp();
   } catch (error) {
     if (error.message === "AUTH_REQUIRED") {
+      state.isAdmin = false;
       setAuthVisibility(false);
+      renderAdminVisibility();
       initializeGoogleSignIn();
       return;
     }
@@ -640,5 +692,6 @@ elements.submitButton.addEventListener("click", submitPredictions);
 elements.logoutButton.addEventListener("click", logout);
 elements.resetButton.addEventListener("click", resetEntry);
 elements.copyShareButton.addEventListener("click", copyShareLink);
+elements.adminCodeButton.addEventListener("click", unlockAdminAccess);
 
 init();

@@ -28,6 +28,7 @@ const refreshState = {
 
 const googleClientId = process.env.GOOGLE_CLIENT_ID || "";
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || process.env.RENDER_EXTERNAL_URL || "";
+const adminCode = (process.env.ADMIN_CODE || "admin123").trim();
 
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "1mb" }));
@@ -473,7 +474,8 @@ app.get("/api/auth/session", (req, res) => {
   res.json({
     authenticated: true,
     user: {
-      username: req.session.user.username
+      username: req.session.user.username,
+      isAdmin: Boolean(req.session.user.isAdmin)
     }
   });
 });
@@ -487,6 +489,7 @@ app.post("/api/auth/google", async (req, res) => {
     const googleUser = await verifyGoogleCredential(req.body?.credential);
     req.session.user = {
       ...googleUser,
+      isAdmin: false,
       createdAt: new Date().toISOString()
     };
 
@@ -495,7 +498,8 @@ app.post("/api/auth/google", async (req, res) => {
       user: {
         username: googleUser.username,
         email: googleUser.email,
-        provider: "google"
+        provider: "google",
+        isAdmin: false
       }
     });
   } catch (error) {
@@ -507,6 +511,24 @@ app.post("/api/auth/logout", (req, res) => {
   req.session.destroy(() => {
     res.clearCookie("connect.sid");
     res.json({ ok: true });
+  });
+});
+
+app.post("/api/admin/unlock", ensureAuthenticated, async (req, res) => {
+  const code = String(req.body?.code || "").trim();
+
+  if (!code || code !== adminCode) {
+    res.status(403).json({ error: "Admin code is incorrect." });
+    return;
+  }
+
+  req.session.user.isAdmin = true;
+  res.json({
+    ok: true,
+    user: {
+      username: req.session.user.username,
+      isAdmin: true
+    }
   });
 });
 

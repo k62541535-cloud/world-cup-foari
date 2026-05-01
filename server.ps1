@@ -22,6 +22,9 @@ $serverState = @{
 }
 $configState = @{
   googleClientId = $null
+  adminUsername = $null
+  adminEmail = $null
+  adminCode = $null
 }
 
 function Import-DotEnvFile {
@@ -70,6 +73,18 @@ function Get-ConfigValue {
 Import-DotEnvFile -Path (Join-Path $root ".env")
 Import-DotEnvFile -Path (Join-Path $root ".env.local")
 $configState.googleClientId = Get-ConfigValue -Name "GOOGLE_CLIENT_ID"
+$configState.adminCode = Get-ConfigValue -Name "ADMIN_CODE"
+if ([string]::IsNullOrWhiteSpace($configState.adminCode)) {
+  $configState.adminCode = "admin123"
+}
+
+function Test-IsAdminUser {
+  param(
+    [string]$Username,
+    [string]$Email
+  )
+  $false
+}
 
 function Read-JsonFile {
   param([string]$Path)
@@ -666,10 +681,13 @@ function Handle-Api {
       return
     }
 
-    Send-Json -Client $Client -Body @{
-      authenticated = $true
-      user = @{ username = $user.username }
-    }
+      Send-Json -Client $Client -Body @{
+        authenticated = $true
+        user = @{
+          username = $user.username
+          isAdmin = [bool]$user.isAdmin
+        }
+      }
     return
   }
 
@@ -683,23 +701,25 @@ function Handle-Api {
       $payload = Read-RequestJson -Request $Request
       $googleUser = Verify-GoogleCredential -Credential ([string]$payload.credential)
       $sessionId = New-SessionId
-      $sessions[$sessionId] = @{
-        username = $googleUser.username
-        email = $googleUser.email
-        picture = $googleUser.picture
-        provider = "google"
-        subject = $googleUser.subject
-        createdAt = [DateTime]::UtcNow.ToString("o")
-      }
-
-      Send-Json -Client $Client -Body @{
-        ok = $true
-        user = @{
+        $sessions[$sessionId] = @{
           username = $googleUser.username
           email = $googleUser.email
+          picture = $googleUser.picture
           provider = "google"
+          subject = $googleUser.subject
+          isAdmin = Test-IsAdminUser -Username $googleUser.username -Email $googleUser.email
+          createdAt = [DateTime]::UtcNow.ToString("o")
         }
-      } -ExtraHeaders @(Set-SessionCookieHeader -SessionId $sessionId)
+
+        Send-Json -Client $Client -Body @{
+          ok = $true
+          user = @{
+            username = $googleUser.username
+            email = $googleUser.email
+            provider = "google"
+            isAdmin = Test-IsAdminUser -Username $googleUser.username -Email $googleUser.email
+          }
+        } -ExtraHeaders @(Set-SessionCookieHeader -SessionId $sessionId)
     } catch {
       Send-Json -Client $Client -Body @{ error = $_.Exception.Message } -StatusCode 401
     }
@@ -786,6 +806,26 @@ function Handle-Api {
   $authenticatedUser = Get-AuthenticatedUser -Request $Request
   if ($null -eq $authenticatedUser) {
     Send-Json -Client $Client -Body @{ error = "Authentication required." } -StatusCode 401
+    return
+  }
+
+  if ($path -eq "/api/admin/unlock" -and $Request.Method -eq "POST") {
+    $payload = Read-RequestJson -Request $Request
+    $code = [string]$payload.code
+
+    if ($code.Trim() -ne $configState.adminCode.Trim()) {
+      Send-Json -Client $Client -Body @{ error = "Admin code is incorrect." } -StatusCode 403
+      return
+    }
+
+    $authenticatedUser.isAdmin = $true
+    Send-Json -Client $Client -Body @{
+      ok = $true
+      user = @{
+        username = $authenticatedUser.username
+        isAdmin = $true
+      }
+    }
     return
   }
 

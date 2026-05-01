@@ -34,7 +34,7 @@
           <a class="button button-ghost" href="https://www.fifa.com/en/tournaments/mens/worldcup/canadamexicousa2026/articles/match-schedule-fixtures-results-teams-stadiums" target="_blank" rel="noreferrer">Official FIFA Schedule</a>
         </div>
 
-        <div class="invite-card">
+        <div id="invite-card" class="invite-card admin-only">
           <div>
             <p class="invite-label">Join This Leaderboard</p>
             <strong>Anyone with this link can sign in and submit picks.</strong>
@@ -101,6 +101,13 @@
               <span>Stage filter</span>
               <select id="stage-filter"></select>
             </label>
+            <div id="admin-code-group" class="input-group admin-code-group">
+              <span>Admin code</span>
+              <div class="admin-code-actions">
+                <input id="admin-code-input" type="password" placeholder="Enter admin code">
+                <button id="admin-code-button" class="button button-ghost" type="button">Unlock</button>
+              </div>
+            </div>
             <button id="logout-button" class="button button-ghost" type="button">Sign Out</button>
           </div>
         </div>
@@ -113,7 +120,7 @@
           </div>
         </div>
 
-        <div class="share-row">
+        <div id="share-row" class="share-row admin-only">
           <span class="share-label">Share link</span>
           <code id="share-url" class="share-url">Start the server to generate a LAN link.</code>
           <span id="share-help" class="share-help">Share this URL so other people can join the same leaderboard.</span>
