@@ -3,6 +3,8 @@ const storageKeys = {
   predictions: "pulse-cup-predictions"
 };
 
+const liveSyncIntervalMs = 5000;
+
 const state = {
   playerName: localStorage.getItem(storageKeys.name) || "",
   stageFilter: "all",
@@ -11,7 +13,8 @@ const state = {
   leaderboard: [],
   submitting: false,
   authConfig: null,
-  isAdmin: false
+  isAdmin: false,
+  liveSyncTimer: null
 };
 
 const elements = {
@@ -93,6 +96,7 @@ function renderAdminVisibility() {
 }
 
 function resetAuthenticatedUi() {
+  stopLiveSync();
   state.playerName = "";
   state.isAdmin = false;
   elements.playerName.value = "";
@@ -496,6 +500,42 @@ async function unlockAdminAccess() {
   }
 }
 
+function applyBootstrapPayload(payload) {
+  state.matches = payload.matches;
+  state.leaderboard = payload.leaderboard;
+  renderStageOptions();
+  renderAll();
+  renderRefreshMeta(payload.refreshInfo);
+  renderShareUrl(payload.serverInfo);
+}
+
+async function syncLiveData() {
+  try {
+    const payload = await fetchBootstrap();
+    applyBootstrapPayload(payload);
+  } catch (error) {
+    if (error.message === "AUTH_REQUIRED") {
+      resetAuthenticatedUi();
+      setStatus("Sign in to continue.", "error");
+      initializeGoogleSignIn();
+    }
+  }
+}
+
+function startLiveSync() {
+  stopLiveSync();
+  state.liveSyncTimer = window.setInterval(() => {
+    void syncLiveData();
+  }, liveSyncIntervalMs);
+}
+
+function stopLiveSync() {
+  if (state.liveSyncTimer) {
+    window.clearInterval(state.liveSyncTimer);
+    state.liveSyncTimer = null;
+  }
+}
+
 async function handleGoogleCredential(response) {
   if (!response?.credential) {
     setAuthMessage("Google did not return a sign-in credential.", "error");
@@ -612,12 +652,7 @@ async function refreshMatches() {
       method: "POST"
     });
 
-    state.matches = payload.matches;
-    state.leaderboard = payload.leaderboard;
-    renderStageOptions();
-    renderAll();
-    renderRefreshMeta(payload.refreshInfo);
-    renderShareUrl(payload.serverInfo);
+    applyBootstrapPayload(payload);
     setStatus(payload.refreshInfo?.lastRefreshSucceeded ? "Official schedule refreshed." : "Refresh attempted - using cached data.", payload.refreshInfo?.lastRefreshSucceeded ? "success" : "error");
   } catch (error) {
     setStatus(describeNetworkError(error, "Refresh failed."), "error");
@@ -645,12 +680,8 @@ async function logout() {
 
 async function initApp() {
   const payload = await fetchBootstrap();
-  state.matches = payload.matches;
-  state.leaderboard = payload.leaderboard;
-  renderStageOptions();
-  renderAll();
-  renderRefreshMeta(payload.refreshInfo);
-  renderShareUrl(payload.serverInfo);
+  applyBootstrapPayload(payload);
+  startLiveSync();
   setStatus("Draft saved locally");
 }
 
