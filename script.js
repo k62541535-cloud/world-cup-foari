@@ -83,12 +83,23 @@ function describeNetworkError(error, fallbackMessage) {
 function setAuthVisibility(isAuthenticated) {
   elements.authShell.classList.toggle("auth-hidden", isAuthenticated);
   document.body.classList.toggle("auth-locked", !isAuthenticated);
+  elements.adminCodeGroup.classList.toggle("admin-only", !isAuthenticated || state.isAdmin);
 }
 
 function renderAdminVisibility() {
   elements.inviteCard.classList.toggle("admin-visible", state.isAdmin);
   elements.shareRow.classList.toggle("admin-visible", state.isAdmin);
-  elements.adminCodeGroup.classList.toggle("admin-only", state.isAdmin);
+  elements.adminCodeGroup.classList.toggle("admin-only", !state.playerName || state.isAdmin);
+}
+
+function resetAuthenticatedUi() {
+  state.playerName = "";
+  state.isAdmin = false;
+  elements.playerName.value = "";
+  elements.adminCodeInput.value = "";
+  localStorage.removeItem(storageKeys.name);
+  setAuthVisibility(false);
+  renderAdminVisibility();
 }
 
 function setStatus(message, tone = "") {
@@ -627,12 +638,7 @@ async function logout() {
     // Keep local logout resilient even if the request fails.
   }
 
-  state.playerName = "";
-  state.isAdmin = false;
-  elements.playerName.value = "";
-  localStorage.removeItem(storageKeys.name);
-  setAuthVisibility(false);
-  renderAdminVisibility();
+  resetAuthenticatedUi();
   initializeGoogleSignIn();
   setAuthMessage("Signed out.");
 }
@@ -654,9 +660,7 @@ async function init() {
     const session = await fetchSession();
 
     if (!session.authenticated) {
-      state.isAdmin = false;
-      setAuthVisibility(false);
-      renderAdminVisibility();
+      resetAuthenticatedUi();
       initializeGoogleSignIn();
       return;
     }
@@ -670,9 +674,8 @@ async function init() {
     await initApp();
   } catch (error) {
     if (error.message === "AUTH_REQUIRED") {
-      state.isAdmin = false;
-      setAuthVisibility(false);
-      renderAdminVisibility();
+      resetAuthenticatedUi();
+      setStatus("Sign in to continue.", "error");
       initializeGoogleSignIn();
       return;
     }
