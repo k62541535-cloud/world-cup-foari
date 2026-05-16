@@ -801,18 +801,50 @@ body::before {
 }
 
 @media (max-width: 900px) {
+  .page-shell {
+    width: min(100% - 24px, 100%);
+  }
+
   .hero {
     grid-template-columns: 1fr;
+    padding: 28px;
   }
 
   .invite-card {
     grid-template-columns: 1fr;
   }
 
+  .hero-panel,
+  .dashboard {
+    gap: 14px;
+  }
+
+  .controls {
+    width: 100%;
+  }
+
+  .controls > * {
+    flex: 1 1 220px;
+  }
+
   .panel-heading,
   .status-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .match-topline,
+  .match-bottomline {
+    align-items: flex-start;
+  }
+
+  .match-bottomline {
+    flex-direction: column;
+  }
+
+  .match-points {
+    min-width: 0;
+    width: 100%;
   }
 
   .status-actions {
@@ -837,16 +869,97 @@ body::before {
     border-radius: 22px;
   }
 
+  .hero::after,
+  .hero-orbit {
+    display: none;
+  }
+
   .hero h1 {
     font-size: clamp(2.4rem, 15vw, 4rem);
+    max-width: none;
   }
 
   .auth-card {
     padding: 22px;
   }
 
+  .hero-actions {
+    flex-direction: column;
+  }
+
+  .hero-actions .button,
+  .invite-actions .button,
+  .status-actions .button,
+  .action-row .button,
+  .admin-code-actions .button {
+    width: 100%;
+  }
+
+  .controls {
+    flex-direction: column;
+  }
+
+  .controls > * {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .input-group,
+  .admin-code-group {
+    min-width: 0;
+  }
+
+  .admin-code-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .status-actions,
+  .action-row,
+  .points-key,
+  .share-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .share-url {
+    width: 100%;
+  }
+
   .match-list {
     grid-template-columns: 1fr;
+  }
+
+  .match-card {
+    padding: 16px;
+  }
+
+  .match-topline,
+  .teams-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .match-kickoff {
+    text-align: left;
+  }
+
+  .team-block,
+  .team-block-away,
+  .team-line-away {
+    text-align: left;
+    justify-content: start;
+  }
+
+  .team-line {
+    justify-content: space-between;
+  }
+
+  .score-input {
+    width: 100%;
+    max-width: none;
+    height: 62px;
+    font-size: 1.7rem;
   }
 
   .leaderboard-head {
@@ -866,5 +979,42 @@ body::before {
     font-size: 0.74rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+}
+
+@media (max-width: 420px) {
+  .page-shell {
+    width: min(100% - 16px, 100%);
+    padding-bottom: 40px;
+  }
+
+  .hero,
+  .panel,
+  .summary-card {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .hero-text,
+  .panel-note,
+  .summary-card p,
+  .invite-text,
+  .share-help {
+    font-size: 0.95rem;
+  }
+
+  .hero-actions,
+  .dashboard,
+  .match-list,
+  .pulse-grid {
+    gap: 12px;
+  }
+
+  .match-title {
+    font-size: 1.15rem;
+  }
+
+  .leaderboard-row {
+    padding: 14px;
   }
 }
