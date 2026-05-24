@@ -901,6 +901,13 @@ function Handle-Api {
     return
   }
 
+  if ($path -eq "/api/leaderboard" -and $Request.Method -eq "GET") {
+    Send-Json -Client $Client -Body @{
+      leaderboard = @(Get-ScoredEntries)
+    }
+    return
+  }
+
   if ($path -eq "/api/refresh" -and $Request.Method -eq "POST") {
     [void](Try-RefreshMatches)
     Send-Json -Client $Client -Body (Get-BootstrapPayload)

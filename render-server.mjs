@@ -605,6 +605,12 @@ app.get("/api/bootstrap", ensureAuthenticated, async (req, res) => {
   res.json(await getBootstrapPayload(req));
 });
 
+app.get("/api/leaderboard", ensureAuthenticated, async (req, res) => {
+  res.json({
+    leaderboard: await getScoredEntries()
+  });
+});
+
 app.post("/api/refresh", ensureAuthenticated, async (req, res) => {
   await tryRefreshMatches();
   res.json(await getBootstrapPayload(req));

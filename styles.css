@@ -506,6 +506,58 @@ body::before {
   line-height: 1.6;
 }
 
+.leaderboard-livebar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background:
+    linear-gradient(90deg, rgba(83, 210, 160, 0.12), transparent 28%),
+    rgba(255, 255, 255, 0.04);
+  flex-wrap: wrap;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #dffbf0;
+  background: rgba(83, 210, 160, 0.18);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.live-pill::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--mint);
+  box-shadow: 0 0 0 6px rgba(83, 210, 160, 0.12);
+}
+
+.live-pill.live-pill-paused {
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.live-pill.live-pill-paused::before {
+  background: var(--muted);
+  box-shadow: none;
+}
+
+.leaderboard-live-meta {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .status-actions {
   display: flex;
   align-items: center;
@@ -761,7 +813,7 @@ body::before {
 .leaderboard-head,
 .leaderboard-row {
   display: grid;
-  grid-template-columns: 82px 1.3fr 90px 90px 130px;
+  grid-template-columns: 82px 1.2fr 110px 90px 90px 130px;
   gap: 12px;
   align-items: center;
   padding: 16px 18px;
@@ -792,6 +844,30 @@ body::before {
 .leaderboard-updated {
   color: var(--muted);
   font-size: 0.88rem;
+}
+
+.leaderboard-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.leaderboard-state-submitted {
+  color: #0f251d;
+  background: linear-gradient(135deg, var(--mint), #95f0b9);
+}
+
+.leaderboard-state-joined {
+  color: var(--sky);
+  background: rgba(127, 212, 255, 0.14);
+  border: 1px solid rgba(127, 212, 255, 0.2);
 }
 
 .empty-state {
@@ -853,7 +929,7 @@ body::before {
 
   .leaderboard-head,
   .leaderboard-row {
-    grid-template-columns: 70px 1fr 80px 70px 110px;
+    grid-template-columns: 70px 1fr 96px 80px 70px 110px;
   }
 }
 
@@ -917,7 +993,8 @@ body::before {
   .status-actions,
   .action-row,
   .points-key,
-  .share-row {
+  .share-row,
+  .leaderboard-livebar {
     flex-direction: column;
     align-items: stretch;
   }

@@ -14,7 +14,9 @@ const state = {
   submitting: false,
   authConfig: null,
   isAdmin: false,
-  liveSyncTimer: null
+  liveSyncTimer: null,
+  lastLeaderboardSyncAt: null,
+  lastLeaderboardChangeAt: null
 };
 
 const elements = {
@@ -34,6 +36,8 @@ const elements = {
   pulseGrid: document.getElementById("pulse-grid"),
   leaderboardBody: document.getElementById("leaderboard-body"),
   leaderboardNote: document.getElementById("leaderboard-note"),
+  leaderboardLiveMeta: document.getElementById("leaderboard-live-meta"),
+  livePill: document.getElementById("live-pill"),
   saveStatus: document.getElementById("save-status"),
   syncMeta: document.getElementById("sync-meta"),
   inviteCard: document.getElementById("invite-card"),
@@ -113,6 +117,18 @@ function setStatus(message, tone = "") {
   if (tone) {
     elements.saveStatus.classList.add(`status-${tone}`);
   }
+}
+
+function getLeaderboardSignature(rows) {
+  return JSON.stringify(
+    rows.map((row) => ({
+      name: row.name,
+      points: row.points,
+      exact: row.exact,
+      updatedAt: row.updatedAt,
+      submitted: row.submitted !== false
+    }))
+  );
 }
 
 function getOutcome(home, away) {
@@ -216,6 +232,39 @@ function formatDate(isoString) {
   }).format(date);
 }
 
+function formatRelativeTime(isoString) {
+  if (!isoString) {
+    return "just now";
+  }
+
+  const date = new Date(isoString);
+
+  if (Number.isNaN(date.getTime())) {
+    return "just now";
+  }
+
+  const diffMs = date.getTime() - Date.now();
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const seconds = Math.round(diffMs / 1000);
+
+  if (Math.abs(seconds) < 60) {
+    return formatter.format(seconds, "second");
+  }
+
+  const minutes = Math.round(seconds / 60);
+  if (Math.abs(minutes) < 60) {
+    return formatter.format(minutes, "minute");
+  }
+
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) {
+    return formatter.format(hours, "hour");
+  }
+
+  const days = Math.round(hours / 24);
+  return formatter.format(days, "day");
+}
+
 function renderRefreshMeta(refreshInfo) {
   if (!refreshInfo) {
     elements.syncMeta.textContent = "Schedule cache status unavailable.";
@@ -243,6 +292,39 @@ function renderShareUrl(serverInfo) {
   elements.heroShareUrl.textContent = preferred;
   elements.copyShareButton.disabled = false;
   elements.shareHelp.textContent = `Share this URL so other people can sign in and join the same leaderboard: ${preferred}`;
+}
+
+function renderLeaderboardMeta() {
+  const submittedCount = state.leaderboard.filter((row) => row.submitted !== false).length;
+  const joinedCount = state.leaderboard.length;
+  const latestUpdate = state.leaderboard.reduce((latest, row) => {
+    if (!row.updatedAt) {
+      return latest;
+    }
+
+    if (!latest) {
+      return row.updatedAt;
+    }
+
+    return new Date(row.updatedAt) > new Date(latest) ? row.updatedAt : latest;
+  }, null);
+
+  elements.livePill.textContent = state.liveSyncTimer ? "Live sync on" : "Live sync paused";
+  elements.livePill.classList.toggle("live-pill-paused", !state.liveSyncTimer);
+
+  if (!joinedCount) {
+    elements.leaderboardLiveMeta.textContent = "Waiting for leaderboard activity...";
+    return;
+  }
+
+  const activityText = latestUpdate
+    ? `Last leaderboard change ${formatRelativeTime(state.lastLeaderboardChangeAt || latestUpdate)}.`
+    : "No leaderboard activity yet.";
+  const syncText = state.lastLeaderboardSyncAt
+    ? `Synced ${formatRelativeTime(state.lastLeaderboardSyncAt)}.`
+    : "Sync starting...";
+
+  elements.leaderboardLiveMeta.textContent = `${joinedCount} joined, ${submittedCount} locked in. ${activityText} ${syncText}`;
 }
 
 async function copyShareLink() {
@@ -401,9 +483,10 @@ function renderSummary() {
 
 function renderLeaderboard() {
   if (!state.leaderboard.length) {
-    elements.leaderboardNote.textContent = "No shared entries yet. Share the link and submit the first pick.";
+    elements.leaderboardNote.textContent = "No shared entries yet. Share the link and sign in the first player.";
   } else {
-    elements.leaderboardNote.textContent = `${state.leaderboard.length} player${state.leaderboard.length === 1 ? "" : "s"} joined this shared leaderboard.`;
+    const submittedCount = state.leaderboard.filter((row) => row.submitted !== false).length;
+    elements.leaderboardNote.textContent = `${state.leaderboard.length} player${state.leaderboard.length === 1 ? "" : "s"} joined. ${submittedCount} locked entr${submittedCount === 1 ? "y" : "ies"} are scoring live.`;
   }
 
   const currentName = state.playerName.trim().toLowerCase();
@@ -418,6 +501,7 @@ function renderLeaderboard() {
         <div class="leaderboard-row${row.currentUser ? " current-user" : ""}">
           <span class="leaderboard-rank" data-label="Rank">#${row.rank}</span>
           <span data-label="Player">${row.name}</span>
+          <span data-label="Status"><span class="leaderboard-state ${row.submitted !== false ? "leaderboard-state-submitted" : "leaderboard-state-joined"}">${row.submitted !== false ? "Locked In" : "Joined"}</span></span>
           <span data-label="Points">${row.points}</span>
           <span data-label="Exact">${row.exact}</span>
           <span class="leaderboard-updated" data-label="Updated">${formatDate(row.updatedAt)}</span>
@@ -425,6 +509,8 @@ function renderLeaderboard() {
       `;
     })
     .join("");
+
+  renderLeaderboardMeta();
 }
 
 function renderAll() {
@@ -500,19 +586,46 @@ async function unlockAdminAccess() {
   }
 }
 
+async function fetchLeaderboard() {
+  try {
+    return await fetchJson("/api/leaderboard");
+  } catch (error) {
+    if (error.message.includes("Authentication required")) {
+      throw new Error("AUTH_REQUIRED");
+    }
+    throw error;
+  }
+}
+
 function applyBootstrapPayload(payload) {
+  const previousSignature = getLeaderboardSignature(state.leaderboard);
   state.matches = payload.matches;
   state.leaderboard = payload.leaderboard;
+  state.lastLeaderboardSyncAt = new Date().toISOString();
+  if (previousSignature !== getLeaderboardSignature(state.leaderboard)) {
+    state.lastLeaderboardChangeAt = new Date().toISOString();
+  }
   renderStageOptions();
   renderAll();
   renderRefreshMeta(payload.refreshInfo);
   renderShareUrl(payload.serverInfo);
 }
 
+function applyLeaderboardPayload(payload) {
+  const previousSignature = getLeaderboardSignature(state.leaderboard);
+  state.leaderboard = payload.leaderboard;
+  state.lastLeaderboardSyncAt = new Date().toISOString();
+  if (previousSignature !== getLeaderboardSignature(state.leaderboard)) {
+    state.lastLeaderboardChangeAt = new Date().toISOString();
+  }
+  renderSummary();
+  renderLeaderboard();
+}
+
 async function syncLiveData() {
   try {
-    const payload = await fetchBootstrap();
-    applyBootstrapPayload(payload);
+    const payload = await fetchLeaderboard();
+    applyLeaderboardPayload(payload);
   } catch (error) {
     if (error.message === "AUTH_REQUIRED") {
       resetAuthenticatedUi();
@@ -631,7 +744,7 @@ async function submitPredictions() {
       })
     });
 
-    state.leaderboard = payload.leaderboard;
+    applyLeaderboardPayload(payload);
     saveLocalDraft();
     setStatus("Entry submitted and locked into the leaderboard.", "success");
     renderAll();
