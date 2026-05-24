@@ -67,7 +67,12 @@ function saveLocalDraft() {
 
 function hasLockedSubmission() {
   const trimmedName = state.playerName.trim().toLowerCase();
-  return Boolean(trimmedName) && state.leaderboard.some((row) => row.name.toLowerCase() === trimmedName);
+  return (
+    Boolean(trimmedName) &&
+    state.leaderboard.some(
+      (row) => row.name.toLowerCase() === trimmedName && row.submitted !== false
+    )
+  );
 }
 
 function setAuthMessage(message, tone = "") {
