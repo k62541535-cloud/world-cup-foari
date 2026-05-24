@@ -1,6 +1,7 @@
 const storageKeys = {
   name: "pulse-cup-player-name",
-  predictions: "pulse-cup-predictions"
+  predictions: "pulse-cup-predictions",
+  lockedMatches: "pulse-cup-locked-matches"
 };
 
 const liveSyncIntervalMs = 5000;
@@ -9,6 +10,7 @@ const state = {
   playerName: localStorage.getItem(storageKeys.name) || "",
   stageFilter: "all",
   predictions: readLocalPredictions(),
+  lockedMatches: readLockedMatches(),
   matches: [],
   leaderboard: [],
   submitting: false,
@@ -60,9 +62,18 @@ function readLocalPredictions() {
   }
 }
 
+function readLockedMatches() {
+  try {
+    return JSON.parse(localStorage.getItem(storageKeys.lockedMatches)) || {};
+  } catch {
+    return {};
+  }
+}
+
 function saveLocalDraft() {
   localStorage.setItem(storageKeys.name, state.playerName);
   localStorage.setItem(storageKeys.predictions, JSON.stringify(state.predictions));
+  localStorage.setItem(storageKeys.lockedMatches, JSON.stringify(state.lockedMatches));
 }
 
 function hasLockedSubmission() {
@@ -73,6 +84,10 @@ function hasLockedSubmission() {
       (row) => row.name.toLowerCase() === trimmedName && row.submitted !== false
     )
   );
+}
+
+function isMatchLocked(matchId) {
+  return Boolean(state.lockedMatches[matchId]);
 }
 
 function setAuthMessage(message, tone = "") {
@@ -385,10 +400,10 @@ function renderMatches() {
       const actualScore = fragment.querySelector(".actual-score");
       const winnerNote = fragment.querySelector(".winner-note");
       const points = fragment.querySelector(".match-points");
-      const rawPrediction = getDraftPrediction(state.predictions[match.id]);
-      const prediction = parsePrediction(rawPrediction);
-      const result = scorePrediction(prediction, match);
-      const locked = hasLockedSubmission();
+    const rawPrediction = getDraftPrediction(state.predictions[match.id]);
+    const prediction = parsePrediction(rawPrediction);
+    const result = scorePrediction(prediction, match);
+      const locked = hasLockedSubmission() || isMatchLocked(match.id);
 
     title.textContent = match.title;
     stage.textContent = match.stage;
@@ -416,6 +431,7 @@ function renderMatches() {
 
         const nextHome = homeScore.value.trim();
         const nextAway = awayScore.value.trim();
+        const hasFullScoreline = nextHome !== "" && nextAway !== "";
 
         if (!nextHome && !nextAway) {
           delete state.predictions[match.id];
@@ -426,8 +442,14 @@ function renderMatches() {
           };
         }
 
+        if (hasFullScoreline) {
+          state.lockedMatches[match.id] = true;
+          homeScore.disabled = true;
+          awayScore.disabled = true;
+        }
+
         saveLocalDraft();
-        setStatus("Draft saved locally");
+        setStatus(hasFullScoreline ? "Scoreline locked. This pick can't be changed." : "Draft saved locally");
 
         renderSummary();
         renderPulse();
